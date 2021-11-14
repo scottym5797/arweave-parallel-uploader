@@ -4,7 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import Piscina from 'piscina';
 import yargs from 'yargs'
-const fastcsv = require('fast-csv');
+import * as csv from 'fast-csv';
 
 
 const jwk = JSON.parse(	
@@ -41,7 +41,7 @@ const input = "/Users/scott.martin@flixbus.com/Documents/GitHub/Personal/arweave
 // const output = "output files"
 
 
-const createChunks = async (files: string[]) => {
+const createChunks = async (files: string[], extension: string) => {
 
 	let totalBytes = 0;
 	let chunkBytes = 0;
@@ -49,7 +49,7 @@ const createChunks = async (files: string[]) => {
 	let chunk: string[] = [];
 
 	for (let i=0; i< files.length; i++) {
-		if (files[i].includes(".png")) {
+		if (files[i].includes(extension)) {
 			const stats = fs.statSync(path.join(input,files[i]))
 			const fileSizeInBytes = stats.size;
 			totalBytes = totalBytes + fileSizeInBytes
@@ -58,7 +58,7 @@ const createChunks = async (files: string[]) => {
 				//console.log("appending to chunk!")
 				chunk.push(path.join(input,files[i]))
 				chunkBytes = chunkBytes + fileSizeInBytes
-			// if chunk more then 250mb, append chunk (list of strings) to imageCHunk (list of list of strings)
+			// if chunk more than 250mb, append chunk (list of strings) to imageChunks (list of list of strings)
 			} else {
 				//console.log("pushing chunk")
 				imageChunks.push(chunk)
@@ -88,7 +88,8 @@ const main = async()=>{
     const files = fs.readdirSync(input);
 	
 	// if png then add to chunks based on size
-	const imageChunks = await createChunks(files)
+	const imageChunks = await createChunks(files, ".png")
+	const jsonChunks = await createChunks(files, ".json")
 
 
 	console.log("IMAGE CHUNKS LEN", imageChunks.length, imageChunks[0])
@@ -101,11 +102,20 @@ const main = async()=>{
 
 	//console.log("IM CHUNKS", imageChunks)
 
-	const test = await Promise.all([
+	const uploadedImages = await Promise.all([
 		uploadChunk(imageChunks[0], jwk, arweave)
-	]).catch((err)=>console.log("Error in promise", err))
+	])
 
-	//console.log(test)
+
+	const uploadedJsons= await Promise.all([
+		uploadChunk(jsonChunks[0], jwk, arweave)
+	])
+	const csvRows = createCsvRows(uploadedImages, uploadedJsons)
+	console.log("csvRows:", csvRows)
+	writeCsv(csvRows,"/Users/scott.martin@flixbus.com/Documents/GitHub/Personal/arweave-parallel-upload/test_images/test.csv")
+	
+
+	console.log("donnnnnnnne")
 } 
 main();
 
@@ -116,19 +126,20 @@ function getArweaveCost(totalBytes: number) {
 }
 
 interface csvRow {
-	local_path: string,
+	file_name: string,
 	arweave_url: string,
 	status: string,
 	json_url: string,
 }
 
-function writeCsv(data: Array<csvRow>, output: string){
-	const ws = fs.createWriteStream(output);
-	fastcsv
-	.write(data, { headers: true })
-	.pipe(ws);
-}
 
+function writeCsv(data: Array<csvRow>, output: string){
+	const csvStream = csv.format({ headers: true });
+	const ws = fs.createWriteStream(output)
+	csvStream.pipe(ws);
+	data.map((row)=>csvStream.write(row));
+	csvStream.end();
+}
 export class MappedFiles {
     arLink: string;
     fileName: string;
@@ -224,5 +235,33 @@ async function uploadChunk(files: Array<string>, jwk: any, arweave: Arweave) {
     }
 
     return response;
+}
+
+function parseUrl(arweaveId: string) {
+	return "http://www.arweave.net/" + arweaveId
+}
+
+function createCsvRows(uploadedImages: MappedFiles[][], uploadedJsons: MappedFiles[][]) {
+	if (uploadedJsons.length > 0) {
+	return uploadedImages.flat().map((image,i)=>{
+			let temp = uploadedJsons.flat().find(jsonFile=> jsonFile.fileName.replace(".json", "") === image.fileName.replace(".png", ""))
+				return {
+					file_name: image.fileName,
+					arweave_url: parseUrl(image.arLink),
+					status: temp ? "success" : "error",
+					json_url: temp ? parseUrl(temp.arLink) : "no json file found",
+				}
+		  })
+		} else {
+			return uploadedImages.flat().map((image,i)=>{
+				return {
+					file_name: image.fileName,
+					arweave_url: parseUrl(image.arLink),
+					status: "success",
+					json_url: ""
+				}
+			})
+		}
+
 }
 
