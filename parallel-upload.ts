@@ -6,11 +6,28 @@ import Piscina from 'piscina';
 import yargs from 'yargs'
 import * as csv from 'fast-csv';
 
+interface csvRow {
+	file_name: string,
+	arweave_url: string,
+	status: string,
+	json_url: string,
+}
+export class MappedFiles {
+    arLink: string;
+    fileName: string;
+    constructor(args: {
+        arLink: string;
+        fileName: string;
+    }) {
+      this.arLink = args.arLink;
+      this.fileName = args.fileName;
+    }
+  }
 
 const jwk = JSON.parse(	
     // parse the user's wallet with string encoding
 	fs.readFileSync(
-        '/Users/scott.martin@flixbus.com/Documents/GitHub/Personal/arweave-parallel-upload/arweave-keyfile-1l-37b30vUK7JfY_GB6jqnX2qK5qeDZiwNk0z0rhf9o.json', 
+        path.resolve(__dirname, 'arweave-keyfile-1l-37b30vUK7JfY_GB6jqnX2qK5qeDZiwNk0z0rhf9o.json'), 
         {
             encoding: 'utf8'
         })
@@ -22,11 +39,6 @@ const arweave = Arweave.init({
     protocol: 'https'
 });
 
-const pool = new Piscina({
-  filename: path.resolve(__dirname, 'test-worker.js'),
-  maxThreads: 4
-});
-
 
 // const argv = yargs(process.argv.slice(2)).options({
 // 	i: { type: 'string', demandOption: true, alias: '--input', description: "location of your input base folder"},
@@ -36,7 +48,7 @@ const pool = new Piscina({
 //   }).argv;
 
 
-const input = "/Users/scott.martin@flixbus.com/Documents/GitHub/Personal/arweave-parallel-upload/demo/Maciej_Custom"
+const input = path.resolve(__dirname, "demo/Maciej_Custom");
 // const wallet = "wallet address"
 // const output = "output files"
 
@@ -92,7 +104,7 @@ const main = async()=>{
 	const jsonChunks = await createChunks(files, ".json")
 
 
-	console.log("IMAGE CHUNKS LEN", imageChunks.length, imageChunks[0])
+	console.log("IMAGE CHUNKS LEN", imageChunks.length)
 
 	// chunksMap = imageChunks.map(async (files, idx)=>{
 	// 	const result = await pool.run({files:files, jwk:jwk, arweave:arweave});
@@ -102,22 +114,41 @@ const main = async()=>{
 
 	//console.log("IM CHUNKS", imageChunks)
 
-	const uploadedImages = await Promise.all([
-		uploadChunk(imageChunks[0], jwk, arweave)
-	])
+	const uploadedImages: MappedFiles[] = await Promise.all([
+		uploadChunk(imageChunks[0], jwk, arweave, "image/png")
+	]).then(a => a.flat())
 
+	console.log("About to group JSONS")
+
+	// generate map for better lookup speed
+	const uploadedImagesMap = new Map();
+	for (let i=0; i<uploadedImages.length; i++) {
+		uploadedImagesMap.set(
+			getcleanFileName(uploadedImages[i].fileName), // get only basename as it makes it easier to compare.
+			uploadedImages[i].arLink
+			)
+	}
+
+	console.log("About to send JSONS")
 
 	const uploadedJsons= await Promise.all([
-		uploadChunk(jsonChunks[0], jwk, arweave)
-	])
+		// we pass in the uploadedImagesMap to be able to lookup the corresponding json (if any) and edit it.
+		uploadChunk(jsonChunks[0], jwk, arweave, "application/json", uploadedImagesMap)
+	]).then(a => a.flat())
+
 	const csvRows = createCsvRows(uploadedImages, uploadedJsons)
-	console.log("csvRows:", csvRows)
-	writeCsv(csvRows,"/Users/scott.martin@flixbus.com/Documents/GitHub/Personal/arweave-parallel-upload/test_images/test.csv")
+	
+	writeCsv(csvRows, path.resolve(__dirname, "demo/test.csv"));
 	
 
-	console.log("donnnnnnnne")
+	console.log("donnnnnnnne let's goooooooooooo")
 } 
 main();
+
+// remove path and extension from name
+function getcleanFileName(fileName:string) {
+	return path.basename(fileName).replace(/\.[^/.]+$/, "");
+}
 
 function getArweaveCost(totalBytes: number) {
 	const fixedCost = 0.000001332792
@@ -125,123 +156,166 @@ function getArweaveCost(totalBytes: number) {
 	return fixedCost + variableCost*totalBytes
 }
 
-interface csvRow {
-	file_name: string,
-	arweave_url: string,
-	status: string,
-	json_url: string,
-}
 
 
 function writeCsv(data: Array<csvRow>, output: string){
+
 	const csvStream = csv.format({ headers: true });
 	const ws = fs.createWriteStream(output)
 	csvStream.pipe(ws);
 	data.map((row)=>csvStream.write(row));
 	csvStream.end();
 }
-export class MappedFiles {
-    arLink: string;
-    fileName: string;
-    constructor(args: {
-        arLink: string;
-        fileName: string;
-    }) {
-      this.arLink = args.arLink;
-      this.fileName = args.fileName;
-    }
-  }
-
-async function uploadChunk(files: Array<string>, jwk: any, arweave: Arweave) {
-    console.log("running script")
-    // init empty chuck
-    const chunk: Array<any> = [];
-    // init signer
-	const signer = new ArweaveSigner(jwk);
-    // init reponse object
-    const response: MappedFiles[] = [];
-
-	//console.log("FILES", files)
-
-    for (let i=0; i< files.length; i++) {
-        try {
-			console.log("READING...")
-            // parse file to read
-            const file = await fs.promises
-            .readFile(files[i])
-            .then((r) => Buffer.from(r.buffer)) as never;
-			console.log("CREATED!")
-            
-            // sign the budle with provided keypair
-            const myTags = [{ name: 'Content-Type', value: 'image/png' }]
-            chunk.push(await createData(file, signer, {tags: myTags}));
-            
-            console.log("pushed to chunk", files[i]);
-    
-        } catch (err) {
-            console.log("ReadFile error:", err)
-            throw err
-        };
-    }
-    
-	console.log("Pushed all the chunkies")
-
-    // put all the data into one chunk and sign
-    const myBundle = await bundleAndSignData(chunk, signer);
-    
-    // create a tx out of a bundle for AR to ingest
-    const tx = await myBundle.toTransaction(arweave, jwk);
-    // sign the transaction to confirm payer
-    await arweave.transactions.sign(tx, jwk);
-
-    console.log(`Posted bundle with tx id: ${tx.id}`);
-    
-    // post the tx into the AR network
-    console.log(await arweave.transactions.post(tx));
-    
-    // get preliminary status of the tx on the AR network
-    console.log(await arweave.transactions.getStatus(tx.id))
-
-    // Get all DataItems -> get all the all bundled data 
-    const data = await arweave.transactions.getData(tx.id, { decode: true });
-
-    console.log("Transaction data", data)
-    
-    // Convert the buffer (bundled data) to an acutal bundle object
-    const bundle_check = new Bundle(Buffer.from(data));
-    
-    // return all the items in the bundle
-    const all = bundle_check.items
-
-    //console.log("All bundle items", all)
-    
-    //get all the ids of the bundle items inside
-    //console.log("All IDs", await bundle_check.getIds());
-
-
-    for(let i=0; i< all.length; i++) {
-        
-        const di = all[i].id;
-        const fn = files[i]
-
-        console.log("Parsed tx returns", di, "for file", fn)
-
-        const mappedFile = new MappedFiles ({
-            arLink: di,
-            fileName: fn
-        });
-
-        response.push(mappedFile);
-    }
-
-    return response;
-}
 
 function parseUrl(arweaveId: string) {
 	return "http://www.arweave.net/" + arweaveId
 }
 
-function createCsvRows(uploadedImages: MappedFiles[][], uploadedJsons: MappedFiles[][]) {
+async function editJSON(
+	uploadedImagesMap: Map<string, string>,
+	fileName: string
+	) {
+	const cleanFileName = getcleanFileName(fileName);
+
+	if (uploadedImagesMap.get(cleanFileName) != undefined) {
+
+		const file = require(fileName);
+		
+		// this program assumes the NFT follows the Token Metadata Standard detailled at https://docs.metaplex.com/nft-standard
+		const arTxID = uploadedImagesMap.get(cleanFileName)
+
+		file.image = `https://www.arweave.net/${arTxID}?ext=png`
+		file.properties.files[0].uri = `https://www.arweave.net/${arTxID}?ext=png`
+
+		fs.writeFile(
+			fileName, 
+			JSON.stringify(file), 
+			function writeJSON(err) {
+				if (err) return console.log(err);
+				//console.log(JSON.stringify(file, null, 2));
+				//console.log('Appending tx id to ' + fileName);
+			}
+		);
+	}
+}
+
+async function uploadChunk(
+	files: Array<string>, 
+	jwk: any, 
+	arweave: Arweave,
+	contentType: string,
+	uploadedImagesMap?: Map<string, string>
+	) {
+	if (uploadedImagesMap) console.log("hello")
+
+	console.log("running script")
+	// init empty chuck
+	const chunk: Array<any> = [];
+	// init signer
+	const signer = new ArweaveSigner(jwk);
+	console.log("Init signer")
+	// init reponse object
+	const response: MappedFiles[] = [];
+
+	//console.log("FILES", files)
+
+	for (let i=0; i< files.length; i++) {
+		try {
+			
+			//console.log("pushing file", files[i])
+
+			if (uploadedImagesMap && contentType === "application/json" ) await editJSON(uploadedImagesMap, files[i]);
+
+			// parse file to read
+			const file = await fs.promises
+			.readFile(files[i])
+			.then((r) => Buffer.from(r.buffer)) as never;
+
+			// sign the budle with provided keypair
+			const txTags = [
+				{ 
+					name: 'Content-Type', 
+					value: contentType 
+				}
+			];
+
+			chunk.push(
+				await createData(file, signer, {tags: txTags})
+			);
+			
+			//console.log("pushed to chunk", files[i]);
+	
+		} catch (err) {
+			console.log("ReadFile error:", err)
+			throw err
+		};
+	}
+	
+	console.log("Pushed all the chunkies")
+
+	// put all the data into one chunk and sign
+	const myBundle = await bundleAndSignData(chunk, signer);
+
+	// create a tx out of a bundle for AR to ingest
+	const tx = await myBundle.toTransaction(arweave, jwk);
+
+	// sign the transaction to confirm payer
+	await arweave.transactions.sign(tx, jwk);
+
+	console.log(`Posted bundle with tx id: ${tx.id}`);
+	
+	// post the tx into the AR network
+	console.log(await arweave.transactions.post(tx));
+
+	// get preliminary status of the tx on the AR network
+	const txStatus = await arweave.transactions.getStatus(tx.id);
+	console.log("transaction status", txStatus);
+
+	// Get all DataItems -> get all the all bundled data 
+	const numRetries = txStatus.status >= 200? 5: 0
+	
+	let data = undefined;
+	for (let j=0; j<numRetries; j++) {
+		try {
+			data = await arweave.transactions.getData(tx.id, { decode: true });
+			break;
+		} catch (e){
+			console.log(`Error retrieving transaction data, ${e} retrying ${numRetries-j} more time(s) to get ${tx.id}...` )
+			await new Promise((resolve) => setTimeout(resolve, 5000))
+		}
+	}
+	if (data == undefined) throw new Error ("Could not parse data... Chonky sad")
+
+	// Convert the buffer (bundled data) to an acutal bundle object
+	const bundle_check = new Bundle(Buffer.from(data));
+	
+	// return all the items in the bundle
+	const all = bundle_check.items
+
+	//console.log("All bundle items", all)
+	
+	//get all the ids of the bundle items inside
+	//console.log("All IDs", await bundle_check.getIds());
+
+	for(let i=0; i< all.length; i++) {
+		
+		const di = all[i].id;
+		const fn = files[i]
+
+		console.log("Parsed tx returns", di, "for file", fn)
+
+		const mappedFile = new MappedFiles ({
+			arLink: di,
+			fileName: fn
+		});
+
+		response.push(mappedFile);
+	}
+
+	return response;
+}
+
+function createCsvRows(uploadedImages: MappedFiles[], uploadedJsons: MappedFiles[]) {
 	if (uploadedJsons.length > 0) {
 	return uploadedImages.flat().map((image,i)=>{
 			let temp = uploadedJsons.flat().find(jsonFile=> jsonFile.fileName.replace(".json", "") === image.fileName.replace(".png", ""))
