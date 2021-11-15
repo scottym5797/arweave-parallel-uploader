@@ -3,7 +3,7 @@ import Arweave from 'arweave';
 import fs from 'fs';
 import path from 'path';
 import Piscina from 'piscina';
-import yargs from 'yargs'
+import yargs, { parserConfiguration } from 'yargs'
 import * as csv from 'fast-csv';
 
 interface csvRow {
@@ -24,14 +24,19 @@ export class MappedFiles {
     }
   }
 
-const jwk = JSON.parse(	
-    // parse the user's wallet with string encoding
-	fs.readFileSync(
-        path.resolve(__dirname, 'arweave-keyfile-1l-37b30vUK7JfY_GB6jqnX2qK5qeDZiwNk0z0rhf9o.json'), 
-        {
-            encoding: 'utf8'
-        })
-);
+  interface Arguments {
+	[x: string]: unknown;
+	i: string,
+	o: string,
+	w: string,
+  }
+  const parser = yargs(process.argv.slice(2)).options({
+	i: { type: 'string', demandOption: true, alias: 'input', description: "location of your input base folder"},
+	o: { type: 'string', alias: 'output', default:"./arweave-uploader.csv",description: "location to put your output csv file"},
+	w: { type: 'string', demandOption: true, alias: 'wallet', description: "location to your arweave wallet"},
+  });
+
+
 //initialise arweave connection
 const arweave = Arweave.init({
     host: 'arweave.net',
@@ -40,21 +45,13 @@ const arweave = Arweave.init({
 });
 
 
-// const argv = yargs(process.argv.slice(2)).options({
-// 	i: { type: 'string', demandOption: true, alias: '--input', description: "location of your input base folder"},
-// 	o: { type: 'string', alias: '--output', default:"./arweave-uploader.csv",description: "location to put your output csv file"},
-// 	m: { type: 'number', alias: '--max-workers', default: 1, description: "maximum number of workers in the pool"},
-// 	w: { type: 'string', alias: '--wallet', description: "location to your arweave wallet"},
-//   }).argv;
 
 
-const input = path.resolve(__dirname, "demo/Maciej_Custom");
-// const wallet = "wallet address"
-// const output = "output files"
 
 
-const createChunks = async (files: string[], extension: string) => {
 
+
+const createChunks = async (files: string[], extension: string, input: string, jwk: string) => {
 	let totalBytes = 0;
 	let chunkBytes = 0;
 	let imageChunks: Array<string[]>= [];
@@ -95,13 +92,21 @@ const createChunks = async (files: string[], extension: string) => {
 
 const main = async()=>{
 
-
-	
+	const argv: Arguments = await parser.argv
+	const input = argv.i
+	const output = argv.o
     const files = fs.readdirSync(input);
-	
+	const jwk = JSON.parse(	
+		// parse the user's wallet with string encoding
+		fs.readFileSync(
+			path.resolve(argv.w), 
+			{
+				encoding: 'utf8'
+			})
+	);
 	// if png then add to chunks based on size
-	const imageChunks = await createChunks(files, ".png")
-	const jsonChunks = await createChunks(files, ".json")
+	const imageChunks = await createChunks(files, ".png", input, jwk)
+	const jsonChunks = await createChunks(files, ".json", input, jwk)
 
 
 	console.log("IMAGE CHUNKS LEN", imageChunks.length)
@@ -138,7 +143,7 @@ const main = async()=>{
 
 	const csvRows = createCsvRows(uploadedImages, uploadedJsons)
 	
-	writeCsv(csvRows, path.resolve(__dirname, "demo/test.csv"));
+	writeCsv(csvRows, path.resolve(output));
 	
 
 	console.log("donnnnnnnne let's goooooooooooo")
@@ -181,7 +186,7 @@ async function editJSON(
 
 		const file = require(fileName);
 		
-		// this program assumes the NFT follows the Token Metadata Standard detailled at https://docs.metaplex.com/nft-standard
+		// this program assumes the NFT follows the Token Metadata Standard detailed at https://docs.metaplex.com/nft-standard
 		const arTxID = uploadedImagesMap.get(cleanFileName)
 
 		file.image = `https://www.arweave.net/${arTxID}?ext=png`
