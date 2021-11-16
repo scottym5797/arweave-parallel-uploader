@@ -34,7 +34,7 @@ export class MappedFiles {
 	i: { type: 'string', demandOption: true, alias: 'input', description: "location of your input base folder"},
 	o: { type: 'string', alias: 'output', default:"./arweave-uploader.csv",description: "location to put your output csv file"},
 	w: { type: 'string', demandOption: true, alias: 'wallet', description: "location to your arweave wallet"},
-  });
+  }).usage('Usage: $0 -i [string] -w [string] -i [string]').example('$0 -i /usr/docs/path/to/images -w /arweave-key.json -o /output.csv', '');
 
 
 //initialise arweave connection
