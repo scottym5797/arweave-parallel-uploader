@@ -17,7 +17,7 @@ To use this repository, ensure that you have [python](https://www.python.org/dow
 ### Easy setup
 
 To install the uploader use: 
-`pip install -U git+https://github.com/scottym5797/arweave-parallel-uploader`
+`pip install -U git+https://github.com/scottym5797/arweave-parallel-uploader@python#egg=arweave-parallel-uploader`
 
 To run your script there are a number of arguments that need to be used. Ensure that your images are in a local folder and following the typical structure.
 
