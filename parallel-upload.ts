@@ -2,8 +2,7 @@ import { ArweaveSigner, bundleAndSignData, createData, Bundle, DataItem } from "
 import Arweave from 'arweave';
 import fs from 'fs';
 import path from 'path';
-import Piscina from 'piscina';
-import yargs, { parserConfiguration } from 'yargs'
+import yargs from 'yargs'
 import * as csv from 'fast-csv';
 
 interface csvRow {
@@ -46,11 +45,6 @@ const arweave = Arweave.init({
 
 
 
-
-
-
-
-
 const createChunks = async (files: string[], extension: string, input: string, jwk: string) => {
 	let totalBytes = 0;
 	let chunkBytes = 0;
@@ -89,66 +83,6 @@ const createChunks = async (files: string[], extension: string, input: string, j
 	}
 	return imageChunks
 }
-
-const main = async()=>{
-
-	const argv: Arguments = await parser.argv
-	const input = argv.i
-	const output = argv.o
-    const files = fs.readdirSync(input);
-	const jwk = JSON.parse(	
-		// parse the user's wallet with string encoding
-		fs.readFileSync(
-			path.resolve(argv.w), 
-			{
-				encoding: 'utf8'
-			})
-	);
-	// if png then add to chunks based on size
-	const imageChunks = await createChunks(files, ".png", input, jwk)
-	const jsonChunks = await createChunks(files, ".json", input, jwk)
-
-
-	console.log("IMAGE CHUNKS LEN", imageChunks.length)
-
-	// chunksMap = imageChunks.map(async (files, idx)=>{
-	// 	const result = await pool.run({files:files, jwk:jwk, arweave:arweave});
-	// 	console.log("Result from batch", idx,":", result);
-	// }
-	//create pool of promises for them to be executed
-
-	//console.log("IM CHUNKS", imageChunks)
-
-	const uploadedImages: MappedFiles[] = await Promise.all([
-		uploadChunk(imageChunks[0], jwk, arweave, "image/png")
-	]).then(a => a.flat())
-
-	console.log("About to group JSONS")
-
-	// generate map for better lookup speed
-	const uploadedImagesMap = new Map();
-	for (let i=0; i<uploadedImages.length; i++) {
-		uploadedImagesMap.set(
-			getcleanFileName(uploadedImages[i].fileName), // get only basename as it makes it easier to compare.
-			uploadedImages[i].arLink
-			)
-	}
-
-	console.log("About to send JSONS")
-
-	const uploadedJsons= await Promise.all([
-		// we pass in the uploadedImagesMap to be able to lookup the corresponding json (if any) and edit it.
-		uploadChunk(jsonChunks[0], jwk, arweave, "application/json", uploadedImagesMap)
-	]).then(a => a.flat())
-
-	const csvRows = createCsvRows(uploadedImages, uploadedJsons)
-	
-	writeCsv(csvRows, path.resolve(output));
-	
-
-	console.log("donnnnnnnne let's goooooooooooo")
-} 
-main();
 
 // remove path and extension from name
 function getcleanFileName(fileName:string) {
@@ -277,7 +211,7 @@ async function uploadChunk(
 	console.log("transaction status", txStatus);
 
 	// Get all DataItems -> get all the all bundled data 
-	const numRetries = txStatus.status >= 200? 5: 0
+	const numRetries = txStatus.status == 202? 10: 0
 	
 	let data = undefined;
 	for (let j=0; j<numRetries; j++) {
@@ -286,7 +220,7 @@ async function uploadChunk(
 			break;
 		} catch (e){
 			console.log(`Error retrieving transaction data, ${e} retrying ${numRetries-j} more time(s) to get ${tx.id}...` )
-			await new Promise((resolve) => setTimeout(resolve, 5000))
+			await new Promise((resolve) => setTimeout(resolve, (j+1)*5000))
 		}
 	}
 	if (data == undefined) throw new Error ("Could not parse data... Chonky sad")
@@ -344,3 +278,63 @@ function createCsvRows(uploadedImages: MappedFiles[], uploadedJsons: MappedFiles
 
 }
 
+
+const main = async()=>{
+
+	const argv: Arguments = await parser.argv
+	const input = argv.i
+	const output = argv.o
+    const files = fs.readdirSync(input);
+	const jwk = JSON.parse(	
+		// parse the user's wallet with string encoding
+		fs.readFileSync(
+			path.resolve(argv.w), 
+			{
+				encoding: 'utf8'
+			})
+	);
+	// if png then add to chunks based on size
+	const imageChunks = await createChunks(files, ".png", input, jwk)
+	const jsonChunks = await createChunks(files, ".json", input, jwk)
+
+
+	console.log("IMAGE CHUNKS LEN", imageChunks.length)
+
+	// chunksMap = imageChunks.map(async (files, idx)=>{
+	// 	const result = await pool.run({files:files, jwk:jwk, arweave:arweave});
+	// 	console.log("Result from batch", idx,":", result);
+	// }
+	//create pool of promises for them to be executed
+
+	//console.log("IM CHUNKS", imageChunks)
+
+	const uploadedImages: MappedFiles[] = await Promise.all(
+		imageChunks.map((imageChunk)=>uploadChunk(imageChunk, jwk, arweave, "image/png"))
+	).then(a => a.flat())
+
+	console.log("About to group JSONS")
+
+	// generate map for better lookup speed
+	const uploadedImagesMap = new Map();
+	for (let i=0; i<uploadedImages.length; i++) {
+		uploadedImagesMap.set(
+			getcleanFileName(uploadedImages[i].fileName), // get only basename as it makes it easier to compare.
+			uploadedImages[i].arLink
+			)
+	}
+
+	console.log("About to send JSONS")
+
+	const uploadedJsons= await Promise.all(
+		// we pass in the uploadedImagesMap to be able to lookup the corresponding json (if any) and edit it.
+		jsonChunks.map((jsonChunk)=> {return uploadChunk(jsonChunk, jwk, arweave, "application/json", uploadedImagesMap)})
+	).then(a => a.flat())
+
+	const csvRows = createCsvRows(uploadedImages, uploadedJsons)
+	
+	writeCsv(csvRows, path.resolve(output));
+	
+
+	console.log("Done! logs sent to ", output)
+} 
+main();
