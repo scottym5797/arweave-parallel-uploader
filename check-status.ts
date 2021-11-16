@@ -93,9 +93,9 @@ const main = async()=>{
   while (neededConfirmations > receivedConfirmations) {
   
     for (const [bundle, _] of Object.entries(cache.bundles)) {
-        if (statusMap[bundle] != 200) {
+        if (statusMap[bundle] != '200 (OK)') {
         const status = await checkStatus(bundle, arweave)
-            if (status == 200) {
+            if (status === 200) {
                 receivedConfirmations += 1
                 }
             statusMap[bundle] = `${status} (${getErrorCode(status.toString())})`
@@ -103,11 +103,12 @@ const main = async()=>{
     }
     console.log("STATUS", JSON.stringify(statusMap, null, 4))
 
-    console.log(`${receivedConfirmations}/${neededConfirmations} bundles confirmed`)
+    
     if (receivedConfirmations == neededConfirmations){ 
         break
     }
     console.log("Not enough confirmations. Checking back in 5 seconds....", statusMap)
+    console.log(`${receivedConfirmations}/${neededConfirmations} bundles confirmed`)
     await new Promise((resolve) => setTimeout(resolve, 5000))
 
   }

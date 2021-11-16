@@ -6,6 +6,7 @@ A repository for speeding up the uploads of local NFT files to arweave using arb
 **_NOTE:_**
 `If you have a large number of small sized files you may fair better using the python version in the python branch. But it isunstable so use with caution`
 
+**From out testing: 600 files adding up to 2Gbs of data running in parallels of 3 was uploaded in ~23 minutes** Your milage may vary.
 
 ## How to Use
 
@@ -38,10 +39,12 @@ Options:
   -w, --wallet     location to your arweave wallet           [string] [required]
   -c, --chunkSize  chunk size (chunkies) in which the data will be bundled. Can
                    be tuned to your memory availability   [number] [default: 50]
+  -m, --max-workers  The number of uploads to be run in parallel (be careful,
+                     can fail to upload)                   [number] [default: 3]
 
 Examples:
   parallel-upload.ts -i /usr/docs/path/to/images -w /arweave-key.json -c 0.2
-  -o /output.csv
+  -o /output.csv -m 20
   ```
 
 ### Checking status

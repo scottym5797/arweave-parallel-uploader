@@ -4,7 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import yargs from 'yargs'
 import * as csv from 'fast-csv';
-
+import pLimit from 'p-limit';
 /*
 tests: 
  - 2 png, 2 json, total 60mb - OK
@@ -38,13 +38,15 @@ export class MappedFiles {
 	i: string,
 	o: string,
 	w: string,
-	c: number
+	c: number,
+	m: number
   }
   const parser = yargs(process.argv.slice(2)).options({
 	i: { type: 'string', demandOption: true, alias: 'input', description: "location of your input base folder"},
 	o: { type: 'string', alias: 'output', default:"./arweave-uploader.csv",description: "location to put your output csv file"},
 	w: { type: 'string', demandOption: true, alias: 'wallet', description: "location to your arweave wallet"},
-	c: { type: 'number', alias: 'chunkSize', default: 50, description: "chunk size (chunkies) in which the data will be bundled. Can be tuned to your memory availability"}
+	c: { type: 'number', alias: 'chunkSize', default: 50, description: "chunk size (chunkies) in Mbs in which the data will be bundled. Can be tuned to your memory availability"},
+	m: { type: 'number', alias: 'max-workers', default: 3, description: "The number of uploads to be run in parallel (be careful, can fail to upload)"}
   }).usage('Usage: $0 -i [string] -w [string] -c [number] -o [string]').example('$0 -i /usr/docs/path/to/images -w /arweave-key.json -c 0.2 -o /output.csv', '');
 
 
@@ -403,10 +405,11 @@ const main = async()=>{
 	//create pool of promises for them to be executed
 
 	//console.log("IM CHUNKS", imageChunks)
-	
-	
+	const limit = pLimit(argv.m);
 	const uploadedImageTxs: MappedFiles[] = await Promise.all(
-		imageChunks.map((imageChunk)=>uploadChunk(imageChunk, jwk, arweave, "image/png"))
+		imageChunks.map((imageChunk)=>{
+			return limit(()=>uploadChunk(imageChunk, jwk, arweave, "image/png"))
+		})
 	).then(a => a.flat())
 
 	let uniqueBundleTx = uploadedImageTxs.map(m => m.arBundle).filter(getUniqueVals)
@@ -477,6 +480,7 @@ const main = async()=>{
 	
 
 	console.log("Done! logs sent to ", output)
+	console.log("Cache to check status at", path.resolve(".cache", cacheContentName + ".log"))
 	console.log(`The files will be up there shortly. The success can be seen at https://viewblock.io/arweave/address/${wallet.split('keyfile-')[1].replace('.json','')}`)
 } 
 main();
