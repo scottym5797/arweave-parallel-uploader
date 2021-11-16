@@ -7,7 +7,7 @@ Tested on unix systems but not yet tested for windows. You may have issues suppo
 
 :warning: **_NOTE:_**
 `Currently uses arweave direct Transactions, and as such it can be unstable for files over ~5mb when using multiple threads. Especially for low bandwith connection.
-A solution to this using bundled transactions will be coming in the next few days. Until then use this tool with caution`
+It is recommended to use the main branch for large files. Use this tool with caution`
 
 
 ## How to Use
