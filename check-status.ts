@@ -3,6 +3,8 @@ import fs from 'fs';
 import path from 'path';
 import { Bundle } from "arbundles";
 import Arweave from 'arweave';
+import * as http from 'http';
+
 
 interface Arguments {
 	c: string
@@ -65,6 +67,11 @@ function getStatusMapFromCache(cache: any) {
   return statusMap
 }
 
+function getErrorCode(code: string) {
+  const statusCodes = http.STATUS_CODES
+  return statusCodes[code]
+} 
+
 const main = async()=>{
 
 	const argv: Arguments = await parser.argv
@@ -85,16 +92,17 @@ const main = async()=>{
 
   while (neededConfirmations > receivedConfirmations) {
   
-    console.log("STATUS", statusMap)
     for (const [bundle, _] of Object.entries(cache.bundles)) {
         if (statusMap[bundle] != 200) {
         const status = await checkStatus(bundle, arweave)
             if (status == 200) {
                 receivedConfirmations += 1
                 }
-            statusMap[bundle] = status
+            statusMap[bundle] = `${status} (${getErrorCode(status.toString())})`
         }
     }
+    console.log("STATUS", JSON.stringify(statusMap, null, 4))
+
     console.log(`${receivedConfirmations}/${neededConfirmations} bundles confirmed`)
     if (receivedConfirmations == neededConfirmations){ 
         break
