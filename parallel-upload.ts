@@ -2,8 +2,16 @@ import { ArweaveSigner, bundleAndSignData, createData, Bundle, DataItem } from "
 import Arweave from 'arweave';
 import fs from 'fs';
 import path from 'path';
-import yargs from 'yargs'
+import yargs, { group } from 'yargs'
 import * as csv from 'fast-csv';
+import Transaction from "arweave/node/lib/transaction";
+
+/*
+tests: 
+ - 2 png, 2 json, total 60mb - OK
+ - 
+
+*/
 
 interface csvRow {
 	file_name: string,
@@ -13,12 +21,15 @@ interface csvRow {
 }
 export class MappedFiles {
     arLink: string;
+	arBundle: string
     fileName: string;
     constructor(args: {
         arLink: string;
+		arBundle: string;
         fileName: string;
     }) {
       this.arLink = args.arLink;
+	  this.arBundle = args.arBundle;
       this.fileName = args.fileName;
     }
   }
@@ -28,11 +39,13 @@ export class MappedFiles {
 	i: string,
 	o: string,
 	w: string,
+	c: number
   }
   const parser = yargs(process.argv.slice(2)).options({
 	i: { type: 'string', demandOption: true, alias: 'input', description: "location of your input base folder"},
 	o: { type: 'string', alias: 'output', default:"./arweave-uploader.csv",description: "location to put your output csv file"},
 	w: { type: 'string', demandOption: true, alias: 'wallet', description: "location to your arweave wallet"},
+	c: { type: 'number', alias: 'chunkSize', default: 50, description: "chunk size (chunkies) in which the data will be bundled. Important to tune it to your memory availability"}
   }).usage('Usage: $0 -i [string] -w [string] -i [string]').example('$0 -i /usr/docs/path/to/images -w /arweave-key.json -o /output.csv', '');
 
 
@@ -45,7 +58,13 @@ const arweave = Arweave.init({
 
 
 
-const createChunks = async (files: string[], extension: string, input: string, jwk: string) => {
+const createChunks = async (
+	files: string[], 
+	extension: string, 
+	input: string, 
+	jwk: string,
+	chunkSize: number
+	) => {
 	let totalBytes = 0;
 	let chunkBytes = 0;
 	let imageChunks: Array<string[]>= [];
@@ -57,7 +76,7 @@ const createChunks = async (files: string[], extension: string, input: string, j
 			const fileSizeInBytes = stats.size;
 			totalBytes = totalBytes + fileSizeInBytes
 			// create a chunk of max 250mb
-			if (((chunkBytes + fileSizeInBytes) / (1024*1024)) < 250){
+			if (((chunkBytes + fileSizeInBytes) / (1024*1024)) < chunkSize){
 				//console.log("appending to chunk!")
 				chunk.push(path.join(input,files[i]))
 				chunkBytes = chunkBytes + fileSizeInBytes
@@ -118,7 +137,7 @@ async function editJSON(
 
 	if (uploadedImagesMap.get(cleanFileName) != undefined) {
 
-		const file = require(fileName);
+		const file = require(path.resolve(__dirname, fileName));
 		
 		// this program assumes the NFT follows the Token Metadata Standard detailed at https://docs.metaplex.com/nft-standard
 		const arTxID = uploadedImagesMap.get(cleanFileName)
@@ -147,14 +166,12 @@ async function uploadChunk(
 	) {
 	if (uploadedImagesMap) console.log("hello")
 
-	console.log("running script")
+	console.log("running uploadCHunk script")
 	// init empty chuck
 	const chunk: Array<any> = [];
 	// init signer
 	const signer = new ArweaveSigner(jwk);
 	console.log("Init signer")
-	// init reponse object
-	const response: MappedFiles[] = [];
 
 	//console.log("FILES", files)
 
@@ -195,8 +212,12 @@ async function uploadChunk(
 	// put all the data into one chunk and sign
 	const myBundle = await bundleAndSignData(chunk, signer);
 
+	console.log("Bundled data")
+
 	// create a tx out of a bundle for AR to ingest
 	const tx = await myBundle.toTransaction(arweave, jwk);
+
+	console.log("made it into tx")
 
 	// sign the transaction to confirm payer
 	await arweave.transactions.sign(tx, jwk);
@@ -206,8 +227,23 @@ async function uploadChunk(
 	// post the tx into the AR network
 	console.log(await arweave.transactions.post(tx));
 
+	console.log("Posted data")
+
+
+	return files.map(m => [tx.id, m])
+
+}
+async function processChunk(
+	files: Array<string>, 
+	tx_id: string, 
+	arweave: Arweave,
+	) {
+
+	// init reponse object
+	const response: MappedFiles[] = [];
+
 	// get preliminary status of the tx on the AR network
-	const txStatus = await arweave.transactions.getStatus(tx.id);
+	const txStatus = await arweave.transactions.getStatus(tx_id);
 	console.log("transaction status", txStatus);
 
 	// Get all DataItems -> get all the all bundled data 
@@ -216,10 +252,11 @@ async function uploadChunk(
 	let data = undefined;
 	for (let j=0; j<numRetries; j++) {
 		try {
-			data = await arweave.transactions.getData(tx.id, { decode: true });
+			data = await arweave.transactions.getData(tx_id, { decode: true });
+			if (data == undefined) throw new Error
 			break;
 		} catch (e){
-			console.log(`Error retrieving transaction data, ${e} retrying ${numRetries-j} more time(s) to get ${tx.id}...` )
+			console.log(`Error retrieving transaction data, ${e} retrying ${numRetries-j} more time(s) to get ${tx_id}...` )
 			await new Promise((resolve) => setTimeout(resolve, (j+1)*5000))
 		}
 	}
@@ -245,6 +282,7 @@ async function uploadChunk(
 
 		const mappedFile = new MappedFiles ({
 			arLink: di,
+			arBundle: tx_id,
 			fileName: fn
 		});
 
@@ -278,6 +316,42 @@ function createCsvRows(uploadedImages: MappedFiles[], uploadedJsons: MappedFiles
 
 }
 
+function createCacheFolder() {
+	var fs = require('fs');
+	var dir = './.cache';
+
+	if (!fs.existsSync(dir)){
+		fs.mkdirSync(dir);
+	}
+}
+
+function saveCacheState(fileName: string, cacheContent: any) {
+
+	fs.writeFileSync(
+		path.resolve(".cache", fileName), 
+		JSON.stringify(cacheContent, null, 4)
+	);
+}
+
+function getUniqueVals(value: any, index: any, self: any) {
+	return self.indexOf(value) === index;
+  }
+
+function getGroupedChunks(uploadedTxs: string[][]) {
+	let groupedChunks: any = {};
+	for (let i=0; i<uploadedTxs.length; i++) {
+
+		const bundlTx = uploadedTxs[i][0]
+		const fileName = uploadedTxs[i][1]
+
+		if (groupedChunks[bundlTx] == undefined ) {
+			groupedChunks[bundlTx] = [fileName];
+		} else {
+			groupedChunks[bundlTx].push(fileName);
+		};
+	};
+	return groupedChunks
+}
 
 const main = async()=>{
 
@@ -293,12 +367,19 @@ const main = async()=>{
 				encoding: 'utf8'
 			})
 	);
+	
+	createCacheFolder()
+	var cacheContentName = "ar-uploads-" + Math.floor(Date.now() / 1000)
+	var cacheContent: any = {bundles: {}};
+
+	console.log("Initializing uploader with a chunksize of " + argv.c + " MB")
+
 	// if png then add to chunks based on size
-	const imageChunks = await createChunks(files, ".png", input, jwk)
-	const jsonChunks = await createChunks(files, ".json", input, jwk)
+	const imageChunks = await createChunks(files, ".png", input, jwk, argv.c)
+	const jsonChunks = await createChunks(files, ".json", input, jwk, argv.c)
 
 
-	console.log("IMAGE CHUNKS LEN", imageChunks.length)
+	console.log("IMAGE CHUNKS LENGTH", imageChunks.length)
 
 	// chunksMap = imageChunks.map(async (files, idx)=>{
 	// 	const result = await pool.run({files:files, jwk:jwk, arweave:arweave});
@@ -307,10 +388,36 @@ const main = async()=>{
 	//create pool of promises for them to be executed
 
 	//console.log("IM CHUNKS", imageChunks)
-
-	const uploadedImages: MappedFiles[] = await Promise.all(
+	
+	
+	const uploadedImageTxs: string[][] = await Promise.all(
 		imageChunks.map((imageChunk)=>uploadChunk(imageChunk, jwk, arweave, "image/png"))
 	).then(a => a.flat())
+
+	let uniqueBundleTx = uploadedImageTxs.map(m => m[0]).filter(getUniqueVals)
+
+	uniqueBundleTx.map( u => {	
+		// make each bundle a single key to group the images bundled into this
+		cacheContent["bundles"][u] = {"items": {}};
+	}); 
+	saveCacheState(cacheContentName, cacheContent)
+
+	// create a grouped view of bundlr txs
+	const groupedImageChunks = getGroupedChunks(uploadedImageTxs)
+
+	// await all imagechunks by groupedImagechunk obtained above
+	const uploadedImages: MappedFiles[] = await Promise.all(
+		Object.keys(groupedImageChunks).map((imageChunk) => processChunk(groupedImageChunks[imageChunk], imageChunk, arweave))
+	).then(a => a.flat())
+
+	// Add to cache
+	uploadedImages.map(u => {
+		cacheContent["bundles"][u.arBundle]["items"][getcleanFileName(u.fileName)] = {
+			file: u.fileName,
+			arLink: u.arLink
+		}
+	})
+	saveCacheState(cacheContentName, cacheContent)
 
 	console.log("About to group JSONS")
 
@@ -325,10 +432,33 @@ const main = async()=>{
 
 	console.log("About to send JSONS")
 
-	const uploadedJsons= await Promise.all(
-		// we pass in the uploadedImagesMap to be able to lookup the corresponding json (if any) and edit it.
-		jsonChunks.map((jsonChunk)=> {return uploadChunk(jsonChunk, jwk, arweave, "application/json", uploadedImagesMap)})
+	const uploadedJSONTxs = await Promise.all(
+		jsonChunks.map((jsonChunk)=>uploadChunk(jsonChunk, jwk, arweave, "application/json", uploadedImagesMap))
 	).then(a => a.flat())
+
+	uniqueBundleTx = uploadedJSONTxs.map(m => m[0]).filter(getUniqueVals)
+
+	uniqueBundleTx.map( u => {	
+		// make each bundle a single key to group the images bundled into this
+		cacheContent["bundles"][u] = {"items": {}};
+	}); 
+	saveCacheState(cacheContentName, cacheContent)
+
+	// create a grouped view of bundlr txs
+	const groupedJSONChunks = getGroupedChunks(uploadedJSONTxs)
+
+	const uploadedJsons: MappedFiles[] = await Promise.all(
+		Object.keys(groupedJSONChunks).map((JSONChunk) => processChunk(groupedJSONChunks[JSONChunk], JSONChunk, arweave))
+	).then(a => a.flat())
+
+	// Add to cache
+	uploadedJsons.map(u => {
+		cacheContent["bundles"][u.arBundle]["items"][getcleanFileName(u.fileName)] = {
+			file: u.fileName,
+			arLink: u.arLink
+		}
+	})
+	saveCacheState(cacheContentName, cacheContent)
 
 	const csvRows = createCsvRows(uploadedImages, uploadedJsons)
 	
