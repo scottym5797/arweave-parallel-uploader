@@ -145,7 +145,7 @@ async function editJSON(
 		file.image = `https://www.arweave.net/${arTxID}?ext=png`
 		file.properties.files[0].uri = `https://www.arweave.net/${arTxID}?ext=png`
 
-		fs.writeFile(
+/* 		fs.writeFile(
 			fileName, 
 			JSON.stringify(file), 
 			function writeJSON(err) {
@@ -153,7 +153,9 @@ async function editJSON(
 				//console.log(JSON.stringify(file, null, 2));
 				//console.log('Appending tx id to ' + fileName);
 			}
-		);
+		); */
+
+		return JSON.stringify(file, null, 4)
 	}
 }
 
@@ -179,13 +181,14 @@ async function uploadChunk(
 		try {
 			
 			//console.log("pushing file", files[i])
-
-			if (uploadedImagesMap && contentType === "application/json" ) await editJSON(uploadedImagesMap, files[i]);
+			let editedFile
+			if (uploadedImagesMap && contentType === "application/json" ) editedFile = await editJSON(uploadedImagesMap, files[i]);
 
 			// parse file to read
-			const file = await fs.promises
-			.readFile(files[i])
-			.then((r) => Buffer.from(r.buffer)) as never;
+			const file = editedFile? editedFile
+							: await fs.promises
+							.readFile(files[i])
+							.then((r) => Buffer.from(r.buffer)) as never;
 
 			// sign the budle with provided keypair
 			const txTags = [
