@@ -1,4 +1,4 @@
-# arweave-parallel-uploader
+# arweave-parallel-uploader - python
 Allows crazy perfs and extreme parallelization 🚀
 
 A repository for parallelizing the uploads of local NFT files to arweave.
