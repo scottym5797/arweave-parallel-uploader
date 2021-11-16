@@ -1,4 +1,4 @@
-import { ArweaveSigner, bundleAndSignData, createData, Bundle, DataItem } from "arbundles";
+import { ArweaveSigner, bundleAndSignData, createData, Bundle } from "arbundles";
 import Arweave from 'arweave';
 import fs from 'fs';
 import path from 'path';
