@@ -331,7 +331,7 @@ function createCacheFolder() {
 function saveCacheState(fileName: string, cacheContent: any) {
 
 	fs.writeFileSync(
-		path.resolve(".cache", fileName), 
+		path.resolve(".cache", fileName + ".log"), 
 		JSON.stringify(cacheContent, null, 4)
 	);
 }
