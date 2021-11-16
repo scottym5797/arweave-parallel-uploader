@@ -3,10 +3,7 @@ Allows crazy perfs and extreme parallelization 🚀
 
 A repository for speeding up the uploads of local NFT files to arweave using arbundles.
 
-**_NOTE:_**
-`If you have a large number of small sized files you may fair better using the python version in the python branch. But it isunstable so use with caution`
-
-**From out testing: 600 files adding up to 2Gbs of data running in parallels of 3 was uploaded in ~23 minutes** Your milage may vary.
+**From our testing: 600 files adding up to 2Gbs of data running in parallels of 3 was uploaded in ~23 minutes** Your milage may vary.
 
 ## How to Use
 
@@ -15,9 +12,11 @@ To use this repository, ensure that you have [ts-node](https://github.com/TypeSt
 ### Uploading
 
 To install the uploader use: 
-`git clone https://github.com/scottym5797/arweave-parallel-upload`
-`cd arweave-parallel-upload`
-`npm install`
+```
+git clone https://github.com/scottym5797/arweave-parallel-upload
+cd arweave-parallel-upload
+npm install
+```
 
 To run your script there are a number of arguments that need to be used. Ensure that your images are in a local folder and following the typical structure.
 
