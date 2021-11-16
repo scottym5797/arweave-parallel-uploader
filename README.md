@@ -3,6 +3,9 @@ Allows crazy perfs and extreme parallelization 🚀
 
 A repository for speeding up the uploads of local NFT files to arweave using arbundles.
 
+**_NOTE:_**
+`Currently only accepts png files. In order to accept other file types please make changes to the script and make a pull request`
+
 **From our testing: 600 files adding up to 2Gbs of data running in parallels of 3 was uploaded in ~23 minutes** Your milage may vary.
 
 ## How to Use
