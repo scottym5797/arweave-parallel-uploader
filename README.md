@@ -11,7 +11,7 @@ A repository for speeding up the uploads of local NFT files to arweave using arb
 
 To use this repository, ensure that you have [ts-node](https://github.com/TypeStrong/ts-node) installed. Ensure that you also have an [arweave wallet](https://www.arweave.org) with sufficient funds to upload your files.
 
-### Easy setup
+### Uploading
 
 To install the uploader use: 
 `git clone https://github.com/scottym5797/arweave-parallel-upload`
@@ -40,10 +40,27 @@ Examples:
   /output.csv
   ```
 
+### Checking status
 
+Once the file is uploaded with a 202, you can then check its status using the check-status.ts file.
+
+Each time you run the parallel upload script it will spit out a log file in the .cache folder.
+This will then be used as an argument in the script to check the status of those files.
+
+e.g.
+`ts-node check-status.ts -c /absolute/path/to/.cache/ar-uploads-1637083642.log`
+
+```
+Options:
+      --help     Show help                                             [boolean]
+      --version  Show version number                                   [boolean]
+  -c, --cache    link to cache file to check status          [string] [required]
+```
 ### Ouput
 
 Once the script runs it puts out a csv file to your local machine showing the mappings of the local file to an arweave json url and arweave image url.
+
+It also outputs a cache to be used in the check-status script
 
 Example output:
 

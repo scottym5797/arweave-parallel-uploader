@@ -229,7 +229,18 @@ async function uploadChunk(
 	console.log(`Posted bundle with tx id: ${tx.id}`);
 	
 	// post the tx into the AR network
-	console.log(await arweave.transactions.post(tx));
+	let result = await arweave.transactions.post(tx);
+	const numRetries = result.status != 200? 5: 0
+	for (let j=0; j<numRetries; j++) {
+		const retry = await arweave.transactions.post(tx);
+		if (retry.status == 200 ){
+			result = retry
+			break
+		}
+		console.log('Transaction failed to post. Retrying ....')
+		await new Promise((resolve) => setTimeout(resolve, (j+1)*5000))
+	}
+	console.log(result)
 
 	console.log("Posted data")
 

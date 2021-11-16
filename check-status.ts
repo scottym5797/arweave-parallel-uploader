@@ -27,7 +27,7 @@ async function checkStatus(
     const txStatus = await arweave.transactions.getStatus(tx_id);
     //console.log("transaction status", txStatus);
 
-    return txStatus.status >= 300? false: true
+    return txStatus.status
 
     // // Get all DataItems -> get all the all bundled data 
     // const numRetries = txStatus.status >= 200? 10: 0
@@ -60,7 +60,7 @@ async function checkStatus(
 
 function getStatusMapFromCache(cache: any) {
   let statusMap: any = {}
-  Object.keys(cache.bundles).map(m => statusMap[m] = false)
+  Object.keys(cache.bundles).map(m => statusMap[m] = 202)
 
   return statusMap
 }
@@ -87,13 +87,22 @@ const main = async()=>{
   
     console.log("STATUS", statusMap)
     for (const [bundle, _] of Object.entries(cache.bundles)) {
-      statusMap[bundle] = await checkStatus(bundle, arweave)
+        if (statusMap[bundle] != 200) {
+        const status = await checkStatus(bundle, arweave)
+            if (status == 200) {
+                receivedConfirmations += 1
+                }
+            statusMap[bundle] = status
+        }
     }
-
+    console.log(`${receivedConfirmations}/${neededConfirmations} bundles confirmed`)
+    if (receivedConfirmations == neededConfirmations){ 
+        break
+    }
     console.log("Not enough confirmations. Checking back in 5 seconds....", statusMap)
     await new Promise((resolve) => setTimeout(resolve, 5000))
 
   }
-	
+	console.log("All bundles confirmed")
 } 
 main();
