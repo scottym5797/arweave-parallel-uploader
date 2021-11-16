@@ -27,17 +27,21 @@ To run your script there are a number of arguments that need to be used. Ensure 
 
 
 ```
+Usage: parallel-upload.ts -i [string] -w [string] -c [number] -o [string]
+
 Options:
-      --help     Show help                                             [boolean]
-      --version  Show version number                                   [boolean]
-  -i, --input    location of your input base folder          [string] [required]
-  -o, --output   location to put your output csv file
+      --help       Show help                                           [boolean]
+      --version    Show version number                                 [boolean]
+  -i, --input      location of your input base folder        [string] [required]
+  -o, --output     location to put your output csv file
                                     [string] [default: "./arweave-uploader.csv"]
-  -w, --wallet   location to your arweave wallet             [string] [required]
+  -w, --wallet     location to your arweave wallet           [string] [required]
+  -c, --chunkSize  chunk size (chunkies) in which the data will be bundled. Can
+                   be tuned to your memory availability   [number] [default: 50]
 
 Examples:
-  parallel-upload.ts -i /usr/docs/path/to/images -w /arweave-key.json -o
-  /output.csv
+  parallel-upload.ts -i /usr/docs/path/to/images -w /arweave-key.json -c 0.2
+  -o /output.csv
   ```
 
 ### Checking status

@@ -44,8 +44,8 @@ export class MappedFiles {
 	i: { type: 'string', demandOption: true, alias: 'input', description: "location of your input base folder"},
 	o: { type: 'string', alias: 'output', default:"./arweave-uploader.csv",description: "location to put your output csv file"},
 	w: { type: 'string', demandOption: true, alias: 'wallet', description: "location to your arweave wallet"},
-	c: { type: 'number', alias: 'chunkSize', default: 50, description: "chunk size (chunkies) in which the data will be bundled. Important to tune it to your memory availability"}
-  }).usage('Usage: $0 -i [string] -w [string] -i [string]').example('$0 -i /usr/docs/path/to/images -w /arweave-key.json -o /output.csv', '');
+	c: { type: 'number', alias: 'chunkSize', default: 50, description: "chunk size (chunkies) in which the data will be bundled. Can be tuned to your memory availability"}
+  }).usage('Usage: $0 -i [string] -w [string] -c [number] -o [string]').example('$0 -i /usr/docs/path/to/images -w /arweave-key.json -c 0.2 -o /output.csv', '');
 
 
 //initialise arweave connection
@@ -165,14 +165,10 @@ async function uploadChunk(
 	contentType: string,
 	uploadedImagesMap?: Map<string, string>
 	) {
-	if (uploadedImagesMap) console.log("hello")
-
-	console.log("running uploadChunk script")
 	// init empty chuck
 	const chunk: Array<any> = [];
 	// init signer
 	const signer = new ArweaveSigner(jwk);
-	console.log("Init signer")
 
 	//console.log("FILES", files)
 
@@ -240,9 +236,8 @@ async function uploadChunk(
 		console.log('Transaction failed to post. Retrying ....')
 		await new Promise((resolve) => setTimeout(resolve, (j+1)*5000))
 	}
-	console.log(result)
 
-	console.log("Posted data")
+	console.log("Posted data with a status code of " + result.status + " (" + result.statusText + ")")
 
 
 	return files.map((file, index) => new MappedFiles ({
@@ -439,8 +434,6 @@ const main = async()=>{
 	})
 	saveCacheState(cacheContentName, cacheContent)
 
-	console.log("About to group JSONS")
-
 	// generate map for better lookup speed
 	const uploadedImagesMap = new Map();
 	for (let i=0; i<uploadedImageTxs.length; i++) {
@@ -449,8 +442,6 @@ const main = async()=>{
 			uploadedImageTxs[i].arLink
 			)
 	}
-
-	console.log("About to send JSONS")
 
 	const uploadedJSONTxs: MappedFiles[] = await Promise.all(
 		jsonChunks.map((jsonChunk)=>uploadChunk(jsonChunk, jwk, arweave, "application/json", uploadedImagesMap))
